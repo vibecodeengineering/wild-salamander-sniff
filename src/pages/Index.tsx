@@ -5,8 +5,7 @@ import { ProjectFilters } from '@/components/ProjectFilters';
 import { Button } from '@/components/ui/button';
 import { PlusCircle } from 'lucide-react';
 import { MadeWithDyad } from "@/components/made-with-dyad";
-// Placeholder for AddProjectDialog - we will create this next
-// import { AddProjectDialog } from '@/components/AddProjectDialog';
+import { AddEditProjectDialog, ProjectFormData } from '@/components/AddEditProjectDialog'; // Import the dialog
 
 // Sample Data
 const initialProjects: Project[] = [
@@ -57,14 +56,15 @@ const phasePaymentAmounts: Record<ProjectStatus, number> = {
   discovery: 1500,
   halfway: 3500,
   'before-launch': 2000,
-  launched: 5000, // Final payment or could be 0 if all paid
+  launched: 0, // Typically no new payment when launched, or it's the final milestone payment
 };
 
 
 const Index = () => {
   const [projects, setProjects] = useState<Project[]>(initialProjects);
   const [filter, setFilter] = useState<ProjectStatus | 'all'>('all');
-  const [isAddProjectDialogOpen, setIsAddProjectDialogOpen] = useState(false);
+  const [isProjectDialogOpen, setIsProjectDialogOpen] = useState(false);
+  const [projectToEdit, setProjectToEdit] = useState<Project | null>(null);
 
   const filteredProjects = useMemo(() => {
     if (filter === 'all') {
@@ -79,7 +79,6 @@ const Index = () => {
         p.id === projectId ? { ...p, paymentStatus } : p
       )
     );
-    // Here you would typically also make an API call to update the backend
     console.log(`Updated payment status for project ${projectId} to ${paymentStatus}`);
   };
 
@@ -93,9 +92,9 @@ const Index = () => {
             return {
               ...p,
               status: nextPhase,
-              paymentStatus: 'pending', // New phase, new payment pending
-              paymentAmount: phasePaymentAmounts[nextPhase], // Update payment amount for new phase
-              paymentDueDate: 'TBD', // Reset due date or calculate new one
+              paymentStatus: 'pending', 
+              paymentAmount: phasePaymentAmounts[nextPhase] || p.paymentAmount, // Use phase specific amount or keep current
+              paymentDueDate: new Date(new Date().setDate(new Date().getDate() + 30)).toISOString().split('T')[0], // e.g. 30 days from now
             };
           }
         }
@@ -105,24 +104,46 @@ const Index = () => {
     console.log(`Advanced phase for project ${projectId}`);
   };
   
-  const handleAddProject = (newProject: Omit<Project, 'id' | 'paymentStatus' | 'paymentDueDate'>) => {
-    const projectToAdd: Project = {
-      ...newProject,
-      id: String(Date.now()), // Simple ID generation
-      paymentStatus: 'pending',
-      paymentDueDate: 'TBD', // Or set a default/calculated due date
-    };
-    setProjects(prevProjects => [projectToAdd, ...prevProjects]);
-    // setIsAddProjectDialogOpen(false); // Close dialog after adding
+  const handleSaveProject = (data: ProjectFormData, projectId?: string) => {
+    if (projectId) { // Editing existing project
+      setProjects(prevProjects =>
+        prevProjects.map(p =>
+          p.id === projectId
+            ? { ...p, ...data, paymentAmount: Number(data.paymentAmount) } // Ensure paymentAmount is number
+            : p
+        )
+      );
+      console.log(`Edited project ${projectId}`);
+    } else { // Adding new project
+      const newProject: Project = {
+        ...data,
+        id: String(Date.now()), // Simple ID generation
+        paymentStatus: 'pending', // New projects start as pending
+        paymentAmount: Number(data.paymentAmount), // Ensure paymentAmount is number
+      };
+      setProjects(prevProjects => [newProject, ...prevProjects]);
+      console.log(`Added new project: ${newProject.projectName}`);
+    }
+    setIsProjectDialogOpen(false);
+    setProjectToEdit(null);
   };
 
+  const openAddProjectDialog = () => {
+    setProjectToEdit(null);
+    setIsProjectDialogOpen(true);
+  };
+
+  const openEditProjectDialog = (project: Project) => {
+    setProjectToEdit(project);
+    setIsProjectDialogOpen(true);
+  };
 
   return (
     <div className="min-h-screen bg-background text-foreground">
       <header className="p-4 border-b sticky top-0 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-10">
         <div className="container mx-auto flex justify-between items-center">
           <h1 className="text-2xl font-bold">Client Project Tracker</h1>
-          <Button onClick={() => setIsAddProjectDialogOpen(true)} variant="default">
+          <Button onClick={openAddProjectDialog} variant="default">
             <PlusCircle size={18} className="mr-2" />
             Add Project
           </Button>
@@ -132,14 +153,15 @@ const Index = () => {
       <ProjectFilters currentFilter={filter} onFilterChange={setFilter} />
 
       <main className="container mx-auto p-4">
-        {/* Placeholder for AddProjectDialog. We'll implement this next. */}
-        {/* isAddProjectDialogOpen && (
-          <AddProjectDialog
-            isOpen={isAddProjectDialogOpen}
-            onClose={() => setIsAddProjectDialogOpen(false)}
-            onAddProject={handleAddProject}
-          />
-        )*/}
+        <AddEditProjectDialog
+          isOpen={isProjectDialogOpen}
+          onClose={() => {
+            setIsProjectDialogOpen(false);
+            setProjectToEdit(null);
+          }}
+          onSaveProject={handleSaveProject}
+          projectToEdit={projectToEdit}
+        />
         
         {filteredProjects.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
@@ -149,6 +171,7 @@ const Index = () => {
                 project={project} 
                 onUpdatePaymentStatus={handleUpdatePaymentStatus}
                 onAdvancePhase={handleAdvancePhase}
+                onEditProject={openEditProjectDialog} // Pass the edit handler
               />
             ))}
           </div>
